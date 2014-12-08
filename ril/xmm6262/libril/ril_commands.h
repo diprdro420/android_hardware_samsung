@@ -62,7 +62,7 @@
     {RIL_REQUEST_QUERY_NETWORK_SELECTION_MODE, dispatchVoid, responseInts},
     {RIL_REQUEST_SET_NETWORK_SELECTION_AUTOMATIC, dispatchVoid, responseVoid},
     {RIL_REQUEST_SET_NETWORK_SELECTION_MANUAL, dispatchString, responseVoid},
-    {RIL_REQUEST_QUERY_AVAILABLE_NETWORKS , dispatchVoid, responseStrings},
+    {RIL_REQUEST_QUERY_AVAILABLE_NETWORKS , dispatchVoid, responseStringsNetworks},
     {RIL_REQUEST_DTMF_START, dispatchString, responseVoid},
     {RIL_REQUEST_DTMF_STOP, dispatchVoid, responseVoid},
     {RIL_REQUEST_BASEBAND_VERSION, dispatchVoid, responseString},
@@ -88,7 +88,7 @@
     {RIL_REQUEST_STK_HANDLE_CALL_SETUP_REQUESTED_FROM_SIM, dispatchInts, responseVoid},
     {RIL_REQUEST_EXPLICIT_CALL_TRANSFER, dispatchVoid, responseVoid},
     {RIL_REQUEST_SET_PREFERRED_NETWORK_TYPE, dispatchInts, responseVoid},
-    {RIL_REQUEST_GET_PREFERRED_NETWORK_TYPE, dispatchVoid, responseIntsGetPreferredNetworkType},
+    {RIL_REQUEST_GET_PREFERRED_NETWORK_TYPE, dispatchVoid, responseInts},
     {RIL_REQUEST_GET_NEIGHBORING_CELL_IDS, dispatchVoid, responseCellList},
     {RIL_REQUEST_SET_LOCATION_UPDATES, dispatchInts, responseVoid},
     {RIL_REQUEST_CDMA_SET_SUBSCRIPTION_SOURCE, dispatchInts, responseVoid},
@@ -124,7 +124,6 @@
     {RIL_REQUEST_STK_SEND_ENVELOPE_WITH_STATUS, dispatchString, responseSIM_IO},
     {RIL_REQUEST_VOICE_RADIO_TECH, dispatchVoiceRadioTech, responseInts},
     {RIL_REQUEST_GET_CELL_INFO_LIST, dispatchVoid, responseCellInfoList},
-    {RIL_REQUEST_SET_UNSOL_CELL_INFO_LIST_RATE, dispatchInts, responseVoid},
     {RIL_REQUEST_SET_INITIAL_ATTACH_APN, dispatchSetInitialAttachApn, responseVoid},
     {RIL_REQUEST_IMS_REGISTRATION_STATE, dispatchVoid, responseInts},
     {RIL_REQUEST_IMS_SEND_SMS, dispatchImsSms, responseSMS},
@@ -144,6 +143,8 @@
     {RIL_REQUEST_SET_DC_RT_INFO_RATE, dispatchInts, responseVoid},
     {RIL_REQUEST_SET_DATA_PROFILE, dispatchDataProfile, responseVoid},
     {RIL_REQUEST_SHUTDOWN, dispatchVoid, responseVoid},
+    {RIL_REQUEST_SET_UNSOL_CELL_INFO_LIST_RATE, dispatchInts, responseVoid},
+    {0, NULL, NULL}, // 10001
     {RIL_REQUEST_GET_CELL_BROADCAST_CONFIG, dispatchVoid, responseVoid},
     {0, NULL, NULL}, // 10003
     {0, NULL, NULL}, // 10004

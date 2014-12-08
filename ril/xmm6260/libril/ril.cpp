@@ -118,6 +118,9 @@ namespace android {
     #define appendPrintBuf(x...)
 #endif
 
+#define MAX_RIL_SOL     RIL_REQUEST_SET_UNSOL_CELL_INFO_LIST_RATE
+#define MAX_RIL_UNSOL   RIL_UNSOL_CELL_INFO_LIST
+
 enum WakeType {DONT_WAKE, WAKE_PARTIAL};
 
 typedef struct {
@@ -278,6 +281,8 @@ static void dispatchSimAuthentication(Parcel &p, RequestInfo *pRI);
 static void dispatchDataProfile(Parcel &p, RequestInfo *pRI);
 static int responseInts(Parcel &p, void *response, size_t responselen);
 static int responseStrings(Parcel &p, void *response, size_t responselen);
+static int responseStringsNetworks(Parcel &p, void *response, size_t responselen);
+static int responseStrings(Parcel &p, void *response, size_t responselen, bool network_search);
 static int responseString(Parcel &p, void *response, size_t responselen);
 static int responseVoid(Parcel &p, void *response, size_t responselen);
 static int responseCallList(Parcel &p, void *response, size_t responselen);
@@ -427,7 +432,16 @@ issueLocalRequest(int request, void *data, int len, RIL_SOCKET_ID socket_id) {
 
     pRI->local = 1;
     pRI->token = 0xffffffff;        // token is not used in this context
-    pRI->pCI = &(s_commands[request]);
+
+    /* Hack to include Samsung requests */
+    if (request > 10000) {
+        index = request - 10000 + MAX_RIL_SOL;
+        RLOGD("SAMSUNG: request=%d, index=%d", request, index);
+        pRI->pCI = &(s_commands[index]);
+    } else {
+        pRI->pCI = &(s_commands[request]);
+    }
+
     pRI->socket_id = socket_id;
 
     ret = pthread_mutex_lock(pendingRequestsMutexHook);
@@ -505,7 +519,17 @@ processCommandBuffer(void *buffer, size_t buflen, RIL_SOCKET_ID socket_id) {
     pRI = (RequestInfo *)calloc(1, sizeof(RequestInfo));
 
     pRI->token = token;
-    pRI->pCI = &(s_commands[request]);
+
+        /* Hack to include Samsung requests */
+    if (request > 10000) {
+        int index = request - 10000 + MAX_RIL_SOL;
+        RLOGD("processCommandBuffer: samsung request=%d, index=%d",
+                request, index);
+        pRI->pCI = &(s_commands[index]);
+    } else {
+        pRI->pCI = &(s_commands[request]);
+    }
+
     pRI->socket_id = socket_id;
 
     ret = pthread_mutex_lock(pendingRequestsMutexHook);
@@ -2089,6 +2113,15 @@ static int responseStringsWithVersion(int version, Parcel &p, void *response, si
 
 /** response is a char **, pointing to an array of char *'s */
 static int responseStrings(Parcel &p, void *response, size_t responselen) {
+    return responseStrings(p, response, responselen, false);
+}
+
+static int responseStringsNetworks(Parcel &p, void *response, size_t responselen) {
+    return responseStrings(p, response, responselen, true);
+}
+
+/** response is a char **, pointing to an array of char *'s */
+static int responseStrings(Parcel &p, void *response, size_t responselen, bool network_search) {
     int numStrings;
 
     if (response == NULL && responselen != 0) {
@@ -2107,11 +2140,29 @@ static int responseStrings(Parcel &p, void *response, size_t responselen) {
         char **p_cur = (char **) response;
 
         numStrings = responselen / sizeof(char *);
+#ifdef NEW_LIBRIL_HTC
+        if (network_search == true) {
+            // we only want four entries for each network
+            p.writeInt32 (numStrings - (numStrings / 5));
+        } else {
+            p.writeInt32 (numStrings);
+        }
+        int sCount = 0;
+#else
         p.writeInt32 (numStrings);
+#endif
 
         /* each string*/
         startResponse;
         for (int i = 0 ; i < numStrings ; i++) {
+#ifdef NEW_LIBRIL_HTC
+            sCount++;
+            // ignore the fifth string that is returned by newer HTC libhtc_ril.so.
+            if (network_search == true && sCount % 5 == 0) {
+                sCount = 0;
+                continue;
+            }
+#endif
             appendPrintBuf("%s%s,", printBuf, (char*)p_cur[i]);
             writeStringToParcel (p, p_cur[i]);
         }
@@ -2309,7 +2360,7 @@ static int responseDataCallListV6(Parcel &p, void *response, size_t responselen)
         writeStringToParcel(p, p_cur[i].ifname);
         writeStringToParcel(p, p_cur[i].addresses);
         writeStringToParcel(p, p_cur[i].dnses);
-        writeStringToParcel(p, p_cur[i].gateways);
+        writeStringToParcel(p, p_cur[i].addresses);
         appendPrintBuf("%s[status=%d,retry=%d,cid=%d,%s,%s,%s,%s,%s,%s],", printBuf,
             p_cur[i].status,
             p_cur[i].suggestedRetryTime,
@@ -2319,7 +2370,7 @@ static int responseDataCallListV6(Parcel &p, void *response, size_t responselen)
             (char*)p_cur[i].ifname,
             (char*)p_cur[i].addresses,
             (char*)p_cur[i].dnses,
-            (char*)p_cur[i].gateways);
+            (char*)p_cur[i].addresses);
     }
     removeLastChar;
     closeResponse;
@@ -2715,59 +2766,65 @@ static int responseCdmaInformationRecords(Parcel &p,
 
 static int responseRilSignalStrength(Parcel &p,
                     void *response, size_t responselen) {
-
-
     if (response == NULL && responselen != 0) {
         RLOGE("invalid response: NULL");
         return RIL_ERRNO_INVALID_RESPONSE;
     }
 
-    RLOGE("responseRilSignalStrength()");
-
     if (responselen >= sizeof (RIL_SignalStrength_v5)) {
         RIL_SignalStrength_v10 *p_cur = ((RIL_SignalStrength_v10 *) response);
 
-         p.writeInt32(p_cur->GW_SignalStrength.signalStrength);
-         p.writeInt32(p_cur->GW_SignalStrength.bitErrorRate);
-        /* cdmaDbm */
+        p.writeInt32(p_cur->GW_SignalStrength.signalStrength);
+        p.writeInt32(p_cur->GW_SignalStrength.bitErrorRate);
         p.writeInt32(p_cur->CDMA_SignalStrength.dbm);
-        /* cdmaEcio */
         p.writeInt32(p_cur->CDMA_SignalStrength.ecio);
-        /* evdoDbm */
         p.writeInt32(p_cur->EVDO_SignalStrength.dbm);
-        /* evdoEcio */
         p.writeInt32(p_cur->EVDO_SignalStrength.ecio);
-        /* evdoSnr */
         p.writeInt32(p_cur->EVDO_SignalStrength.signalNoiseRatio);
-
         if (responselen >= sizeof (RIL_SignalStrength_v6)) {
-            /* lteSignalStrength */
-            p.writeInt32(p_cur->LTE_SignalStrength.signalStrength);
-
             /*
-             * ril version <=6 receives negative values for rsrp
-             * workaround for backward compatibility
+             * Fixup LTE for backwards compatibility
              */
-            p_cur->LTE_SignalStrength.rsrp =
-                    ((s_callbacks.version <= 6) && (p_cur->LTE_SignalStrength.rsrp < 0 )) ?
-                        -(p_cur->LTE_SignalStrength.rsrp) : p_cur->LTE_SignalStrength.rsrp;
+            if (s_callbacks.version <= 6) {
+                // signalStrength: -1 -> 99
+                if (p_cur->LTE_SignalStrength.signalStrength == -1) {
+                    p_cur->LTE_SignalStrength.signalStrength = 99;
+                }
+                // rsrp: -1 -> INT_MAX all other negative value to positive.
+                // So remap here
+                if (p_cur->LTE_SignalStrength.rsrp == -1) {
+                    p_cur->LTE_SignalStrength.rsrp = INT_MAX;
+                } else if (p_cur->LTE_SignalStrength.rsrp < -1) {
+                    p_cur->LTE_SignalStrength.rsrp = -p_cur->LTE_SignalStrength.rsrp;
+                }
+                // rsrq: -1 -> INT_MAX
+                if (p_cur->LTE_SignalStrength.rsrq == -1) {
+                    p_cur->LTE_SignalStrength.rsrq = INT_MAX;
+                }
+                // Not remapping rssnr is already using INT_MAX
 
-            /* lteRsrp */
+                // cqi: -1 -> INT_MAX
+                if (p_cur->LTE_SignalStrength.cqi == -1) {
+                    p_cur->LTE_SignalStrength.cqi = INT_MAX;
+                }
+            }
+            p.writeInt32(p_cur->LTE_SignalStrength.signalStrength);
             p.writeInt32(p_cur->LTE_SignalStrength.rsrp);
-            /* lteRsrq */
             p.writeInt32(p_cur->LTE_SignalStrength.rsrq);
-            /* lteRssnr */
             p.writeInt32(p_cur->LTE_SignalStrength.rssnr);
-            /* lteCqi */
             p.writeInt32(p_cur->LTE_SignalStrength.cqi);
-
             if (responselen >= sizeof (RIL_SignalStrength_v10)) {
                 p.writeInt32(p_cur->TD_SCDMA_SignalStrength.rscp);
             } else {
                 p.writeInt32(INT_MAX);
             }
         } else {
-            memset(&p_cur->LTE_SignalStrength, sizeof (RIL_LTE_SignalStrength), 0);
+            p.writeInt32(99);
+            p.writeInt32(INT_MAX);
+            p.writeInt32(INT_MAX);
+            p.writeInt32(INT_MAX);
+            p.writeInt32(INT_MAX);
+            p.writeInt32(INT_MAX);
         }
 
         startResponse;
@@ -3170,7 +3227,6 @@ static int responseSimStatus(Parcel &p, void *response, size_t responselen) {
     }
 
     if (responselen == sizeof (RIL_CardStatus_v6)) {
-        RLOGE("RIL_CardStatus_v6");
         RIL_CardStatus_v6 *p_cur = ((RIL_CardStatus_v6 *) response);
 
         p.writeInt32(p_cur->card_state);
@@ -3181,7 +3237,6 @@ static int responseSimStatus(Parcel &p, void *response, size_t responselen) {
 
         sendSimStatusAppInfo(p, p_cur->num_applications, p_cur->applications);
     } else if (responselen == sizeof (RIL_CardStatus_v5)) {
-        RLOGE("RIL_CardStatus_v5");
         RIL_CardStatus_v5 *p_cur = ((RIL_CardStatus_v5 *) response);
 
         p.writeInt32(p_cur->card_state);
@@ -3193,9 +3248,6 @@ static int responseSimStatus(Parcel &p, void *response, size_t responselen) {
         sendSimStatusAppInfo(p, p_cur->num_applications, p_cur->applications);
     } else {
         RLOGE("responseSimStatus: A RilCardStatus_v6 or _v5 expected\n");
-        RLOGE("responselen=%d", responselen);
-        RLOGE("RIL_CardStatus_v5=%d", sizeof (RIL_CardStatus_v5));
-        RLOGE("RIL_CardStatus_v6=%d", sizeof (RIL_CardStatus_v6));
         return RIL_ERRNO_INVALID_RESPONSE;
     }
 
