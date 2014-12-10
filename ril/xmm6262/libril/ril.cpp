@@ -118,9 +118,6 @@ namespace android {
     #define appendPrintBuf(x...)
 #endif
 
-#define MAX_RIL_SOL     RIL_REQUEST_SET_UNSOL_CELL_INFO_LIST_RATE
-#define MAX_RIL_UNSOL   RIL_UNSOL_CELL_INFO_LIST
-
 enum WakeType {DONT_WAKE, WAKE_PARTIAL};
 
 typedef struct {
@@ -281,8 +278,6 @@ static void dispatchSimAuthentication(Parcel &p, RequestInfo *pRI);
 static void dispatchDataProfile(Parcel &p, RequestInfo *pRI);
 static int responseInts(Parcel &p, void *response, size_t responselen);
 static int responseStrings(Parcel &p, void *response, size_t responselen);
-static int responseStringsNetworks(Parcel &p, void *response, size_t responselen);
-static int responseStrings(Parcel &p, void *response, size_t responselen, bool network_search);
 static int responseString(Parcel &p, void *response, size_t responselen);
 static int responseVoid(Parcel &p, void *response, size_t responselen);
 static int responseCallList(Parcel &p, void *response, size_t responselen);
@@ -432,15 +427,7 @@ issueLocalRequest(int request, void *data, int len, RIL_SOCKET_ID socket_id) {
 
     pRI->local = 1;
     pRI->token = 0xffffffff;        // token is not used in this context
-
-   /* Hack to include Samsung requests */
-    if (request > 10000) {
-        int index = request - 10000 + MAX_RIL_SOL;
-        RLOGD("SAMSUNG: request=%d, index=%d", request, index);
-        pRI->pCI = &(s_commands[index]);
-    } else {
-        pRI->pCI = &(s_commands[request]);
-    }
+    pRI->pCI = &(s_commands[request]);
     pRI->socket_id = socket_id;
 
     ret = pthread_mutex_lock(pendingRequestsMutexHook);
@@ -518,17 +505,7 @@ processCommandBuffer(void *buffer, size_t buflen, RIL_SOCKET_ID socket_id) {
     pRI = (RequestInfo *)calloc(1, sizeof(RequestInfo));
 
     pRI->token = token;
-
-        /* Hack to include Samsung requests */
-    if (request > 10000) {
-        int index = request - 10000 + MAX_RIL_SOL;
-        RLOGD("processCommandBuffer: samsung request=%d, index=%d",
-                request, index);
-        pRI->pCI = &(s_commands[index]);
-    } else {
-        pRI->pCI = &(s_commands[request]);
-    }
-
+    pRI->pCI = &(s_commands[request]);
     pRI->socket_id = socket_id;
 
     ret = pthread_mutex_lock(pendingRequestsMutexHook);
@@ -2106,15 +2083,7 @@ static int responseStringsWithVersion(int version, Parcel &p, void *response, si
 
 /** response is a char **, pointing to an array of char *'s */
 static int responseStrings(Parcel &p, void *response, size_t responselen) {
-    return responseStrings(p, response, responselen, false);
-}
 
-static int responseStringsNetworks(Parcel &p, void *response, size_t responselen) {
-    return responseStrings(p, response, responselen, true);
-}
-
-/** response is a char **, pointing to an array of char *'s */
-static int responseStrings(Parcel &p, void *response, size_t responselen, bool network_search) {
     int numStrings;
 
     if (response == NULL && responselen != 0) {
